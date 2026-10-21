@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verifica Stock</title>
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --fg: #1c1c1a;
+    --muted: #75736c;
+    --line: #e2dfd8;
+    --accent: #2f5d50;
+    --bad: #b3261e;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615;
+      --fg: #e8e6e1;
+      --muted: #96938b;
+      --line: #2e2d2a;
+      --accent: #8cc2ae;
+      --bad: #f08a82;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 860px;
+    padding: 32px 16px 64px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 40px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+  nav a:first-child { margin-left: 0; }
+  nav a:hover { color: var(--fg); }
+  section { margin-bottom: 56px; scroll-margin-top: 16px; }
+  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; font-size: 13px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--fg); }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .scroll { overflow-x: auto; }
+  .estado { font-size: 13px; color: var(--muted); }
+  .estado.agotado, .falta { color: var(--bad); }
+
+  input, select, button { font: inherit; color: inherit; }
+  input, select {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 5px 7px;
+    width: 100%;
+  }
+  td input { border-color: transparent; }
+  td input:hover { border-color: var(--line); }
+  td:nth-child(2) input { min-width: 200px; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=number] { text-align: right; font-variant-numeric: tabular-nums; }
+
+  button {
+    background: transparent;
+    border: 1px solid var(--fg);
+    border-radius: 3px;
+    padding: 5px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button.primario { background: var(--fg); color: var(--bg); }
+  button.link { border: 0; padding: 4px; color: var(--muted); text-decoration: underline; }
+  button.link:hover { color: var(--bad); }
+  button:disabled { opacity: .4; cursor: default; }
+
+  .fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .fila select { flex: 1 1 240px; width: auto; }
+  .fila .cant { flex: 0 0 90px; }
+  .vacio { color: var(--muted); padding: 12px 8px; }
+  .resultado { margin-top: 20px; }
+  .resultado p { margin: 12px 0 0; }
+  #aviso { position: fixed; bottom: 16px; left: 16px; right: 16px; max-width: 560px; margin: 0 auto; padding: 10px 14px; background: var(--fg); color: var(--bg); border-radius: 3px; }
+  #aviso.error { background: var(--bad); color: #fff; }
+  .pedido-h { margin-bottom: 18px; }
+  .pedido-h div { color: var(--muted); font-size: 13px; }
+  .pedido-h ul { margin: 2px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Verifica Stock</h1>
+  <nav>
+    <a href="#inventario">Inventario</a>
+    <a href="#pedido">Pedido</a>
+    <a href="#historial">Historial</a>
+  </nav>
+</header>
+
+<section id="inventario">
+  <h2>Inventario</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>SKU</th><th>Producto</th><th class="num">Stock</th><th></th><th></th></tr></thead>
+      <tbody id="productos"></tbody>
+      <tfoot>
+        <tr>
+          <td><input id="nuevo-sku" class="mono" placeholder="SKU" aria-label="SKU nuevo"></td>
+          <td><input id="nuevo-nombre" placeholder="Nombre del producto" aria-label="Nombre nuevo"></td>
+          <td><input id="nuevo-stock" type="number" min="0" value="0" aria-label="Stock inicial"></td>
+          <td colspan="2"><button id="agregar-producto">Agregar</button></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+
+<section id="pedido">
+  <h2>Pedido</h2>
+  <div class="fila">
+    <select id="pedido-producto" aria-label="Producto"></select>
+    <input id="pedido-cant" class="cant" type="number" min="1" value="1" aria-label="Cantidad">
+    <button id="pedido-agregar">Añadir</button>
+  </div>
+  <table style="margin-top:16px">
+    <thead><tr><th>Producto</th><th class="num">Cantidad</th><th></th></tr></thead>
+    <tbody id="pedido-lineas"></tbody>
+  </table>
+  <div class="fila">
+    <button id="verificar">Verificar</button>
+    <button id="confirmar" class="primario">Confirmar pedido</button>
+    <button id="vaciar" class="link">Vaciar</button>
+  </div>
+  <div id="resultado" class="resultado"></div>
+</section>
+
+<section id="historial">
+  <h2>Historial</h2>
+  <div id="pedidos"></div>
+</section>
+
+<div id="aviso" role="status" hidden></div>
+
+<script>
+"use strict";
+
+let productos = [];
+let pedido = []; // { sku, qty }
+
+const $ = (id) => document.getElementById(id);
+
+// Construye nodos con textContent para no inyectar HTML con datos del usuario.
+function el(tag, props = {}, ...hijos) {
+  const n = Object.assign(document.createElement(tag), props);
+  n.append(...hijos);
+  return n;
+}
+
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json();
+  if (!r.ok) throw Object.assign(new Error(data.error || "Error"), { data });
+  return data;
+}
+
+let avisoTimer;
+function avisar(msg, error = false) {
+  const a = $("aviso");
+  a.textContent = msg;
+  a.className = error ? "error" : "";
+  a.hidden = false;
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(() => (a.hidden = true), 3500);
+}
+
+function estado(stock) {
+  if (stock <= 0) return el("span", { className: "estado agotado", textContent: "agotado" });
+  if (stock <= 5) return el("span", { className: "estado", textContent: "bajo" });
+  return "";
+}
+
+function renderProductos() {
+  $("productos").replaceChildren(...productos.map((p) => {
+    const nombre = el("input", { value: p.nombre, ariaLabel: "Nombre de " + p.sku });
+    const stock = el("input", { type: "number", min: 0, value: p.stock, ariaLabel: "Stock de " + p.sku });
+    const guardar = async () => {
+      const cambio = { nombre: nombre.value, stock: Number(stock.value) };
+      if (cambio.nombre === p.nombre && cambio.stock === p.stock) return;
+      try {
+        Object.assign(p, await api("PUT", "/api/productos/" + encodeURIComponent(p.sku), cambio));
+        renderProductos();
+        renderSelect();
+        avisar("Guardado " + p.sku);
+      } catch (e) {
+        nombre.value = p.nombre;
+        stock.value = p.stock;
+        avisar(e.message, true);
+      }
+    };
+    for (const input of [nombre, stock]) {
+      input.addEventListener("change", guardar);
+      input.addEventListener("keydown", (ev) => ev.key === "Enter" && input.blur());
+    }
+    const borrar = el("button", { className: "link", textContent: "borrar" });
+    borrar.addEventListener("click", async () => {
+      if (!confirm("¿Borrar " + p.nombre + "?")) return;
+      try {
+        await api("DELETE", "/api/productos/" + encodeURIComponent(p.sku));
+        pedido = pedido.filter((l) => l.sku !== p.sku);
+        await cargarProductos();
+        renderPedido();
+      } catch (e) { avisar(e.message, true); }
+    });
+    return el("tr", {},
+      el("td", { className: "mono", textContent: p.sku }),
+      el("td", {}, nombre),
+      el("td", { style: "width:100px" }, stock),
+      el("td", {}, estado(p.stock)),
+      el("td", { className: "num" }, borrar));
+  }));
+}
+
+function renderSelect() {
+  const sel = $("pedido-producto");
+  const actual = sel.value;
+  sel.replaceChildren(...productos.map((p) =>
+    el("option", { value: p.sku, textContent: p.nombre + " — " + p.stock + " en stock" })));
+  if (productos.some((p) => p.sku === actual)) sel.value = actual;
+}
+
+function nombreDe(sku) {
+  const p = productos.find((p) => p.sku === sku);
+  return p ? p.nombre : sku;
+}
+
+function renderPedido() {
+  $("resultado").replaceChildren();
+  const cuerpo = $("pedido-lineas");
+  if (!pedido.length) {
+    cuerpo.replaceChildren(el("tr", {}, el("td", { colSpan: 3, className: "vacio", textContent: "Sin productos." })));
+  } else {
+    cuerpo.replaceChildren(...pedido.map((l, i) => {
+      const quitar = el("button", { className: "link", textContent: "quitar" });
+      quitar.addEventListener("click", () => { pedido.splice(i, 1); renderPedido(); });
+      return el("tr", {},
+        el("td", { textContent: nombreDe(l.sku) }),
+        el("td", { className: "num", textContent: l.qty }),
+        el("td", { className: "num" }, quitar));
+    }));
+  }
+  $("verificar").disabled = $("confirmar").disabled = !pedido.length;
+}
+
+function renderResultado(r, mensaje) {
+  $("resultado").replaceChildren(
+    el("table", {},
+      el("thead", {}, el("tr", {},
+        el("th", { textContent: "Producto" }),
+        el("th", { className: "num", textContent: "Pedido" }),
+        el("th", { className: "num", textContent: "Disponible" }),
+        el("th", { className: "num", textContent: "Faltan" }))),
+      el("tbody", {}, ...r.lineas.map((l) => el("tr", {},
+        el("td", { textContent: l.nombre }),
+        el("td", { className: "num", textContent: l.pedido }),
+        el("td", { className: "num", textContent: l.disponible }),
+        el("td", { className: "num" + (l.faltante ? " falta" : ""), textContent: l.faltante || "—" }))))),
+    el("p", { className: r.ok ? "" : "falta", textContent: mensaje }));
+}
+
+async function cargarProductos() {
+  productos = await api("GET", "/api/productos");
+  renderProductos();
+  renderSelect();
+}
+
+async function cargarHistorial() {
+  const pedidos = await api("GET", "/api/pedidos");
+  $("pedidos").replaceChildren(...(pedidos.length ? pedidos.map((p) =>
+    el("div", { className: "pedido-h" },
+      el("div", { textContent: "#" + p.id + " · " + p.fecha }),
+      el("ul", {}, ...p.items.map((i) => el("li", { textContent: i.nombre + " × " + i.cantidad })))))
+    : [el("p", { className: "vacio", textContent: "Todavía no hay pedidos confirmados." })]));
+}
+
+$("agregar-producto").addEventListener("click", async () => {
+  try {
+    await api("POST", "/api/productos", {
+      sku: $("nuevo-sku").value,
+      nombre: $("nuevo-nombre").value,
+      stock: Number($("nuevo-stock").value),
+    });
+    $("nuevo-sku").value = $("nuevo-nombre").value = "";
+    $("nuevo-stock").value = 0;
+    await cargarProductos();
+  } catch (e) { avisar(e.message, true); }
+});
+
+$("pedido-agregar").addEventListener("click", () => {
+  const sku = $("pedido-producto").value;
+  const qty = Number($("pedido-cant").value);
+  if (!sku || !Number.isInteger(qty) || qty < 1) return avisar("Cantidad inválida", true);
+  const linea = pedido.find((l) => l.sku === sku);
+  if (linea) linea.qty += qty; else pedido.push({ sku, qty });
+  $("pedido-cant").value = 1;
+  renderPedido();
+});
+
+$("vaciar").addEventListener("click", () => { pedido = []; renderPedido(); });
+
+$("verificar").addEventListener("click", async () => {
+  try {
+    const r = await api("POST", "/api/verificar", { items: pedido });
+    renderResultado(r, r.ok ? "Hay stock suficiente para todo el pedido." : "No hay stock suficiente para todo el pedido.");
+  } catch (e) { avisar(e.message, true); }
+});
+
+$("confirmar").addEventListener("click", async () => {
+  try {
+    const r = await api("POST", "/api/pedidos", { items: pedido });
+    pedido = [];
+    renderPedido();
+    renderResultado(r, "Pedido #" + r.id + " confirmado. Stock descontado.");
+    await Promise.all([cargarProductos(), cargarHistorial()]);
+  } catch (e) {
+    if (e.data && e.data.lineas) renderResultado(e.data, e.message);
+    else avisar(e.message, true);
+  }
+});
+
+Promise.all([cargarProductos(), cargarHistorial()])
+  .then(renderPedido)
+  .catch(() => avisar("No se pudo conectar con el servidor", true));
+</script>
+</body>
+</html>
